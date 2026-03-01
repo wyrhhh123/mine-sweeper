@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫雷游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #e94560;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .game-info {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            color: #fff;
+            font-size: 18px;
+        }
+        
+        .game-info span {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+        
+        .difficulty-select {
+            margin-bottom: 20px;
+        }
+        
+        select {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            background: #e94560;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .board {
+            display: grid;
+            gap: 2px;
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        .cell {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            color: #fff;
+        }
+        
+        .cell:hover:not(.revealed) {
+            background: #e94560;
+            transform: scale(1.05);
+        }
+        
+        .cell.revealed {
+            background: #0f3460;
+            cursor: default;
+        }
+        
+        .cell.mine {
+            background: #e94560;
+        }
+        
+        .cell.flagged {
+            color: #ffd700;
+        }
+        
+        .cell[data-num="1"] { color: #4fc3f7; }
+        .cell[data-num="2"] { color: #81c784; }
+        .cell[data-num="3"] { color: #f06292; }
+        .cell[data-num="4"] { color: #ba68c8; }
+        .cell[data-num="5"] { color: #ffb74d; }
+        .cell[data-num="6"] { color: #4dd0e1; }
+        .cell[data-num="7"] { color: #fff176; }
+        .cell[data-num="8"] { color: #90a4ae; }
+        
+        .btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            background: #e94560;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            background: #ff6b6b;
+            transform: translateY(-2px);
+        }
+        
+        .message {
+            margin-top: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            height: 30px;
+        }
+        
+        .win { color: #4caf50; }
+        .lose { color: #e94560; }
+    </style>
+</head>
+<body>
+    <h1>💣 扫雷游戏</h1>
+    
+    <div class="difficulty-select">
+        <select id="difficulty">
+            <option value="easy">简单 (9×9, 10雷)</option>
+            <option value="medium" selected>中等 (16×16, 40雷)</option>
+            <option value="hard">困难 (30×16, 99雷)</option>
+        </select>
+    </div>
+    
+    <div class="game-info">
+        <span>💣 剩余: <b id="mines-left">40</b></span>
+        <span>⏱️ 时间: <b id="timer">0</b></span>
+    </div>
+    
+    <div class="board" id="board"></div>
+    
+    <div class="message" id="message"></div>
+    
+    <button class="btn" onclick="initGame()">🔄 重新开始</button>
+    
+    <script>
+        const difficulties = {
+            easy: { rows: 9, cols: 9, mines: 10 },
+            medium: { rows: 16, cols: 16, mines: 40 },
+            hard: { rows: 16, cols: 30, mines: 99 }
+        };
+        
+        let board = [];
+        let gameOver = false;
+        let timer = 0;
+        let timerInterval = null;
+        let flags = 0;
+        let firstClick = true;
+        let currentDifficulty = 'medium';
+        
+        function initGame() {
+            const diff = difficulties[currentDifficulty];
+            const { rows, cols, mines } = diff;
+            
+            board = [];
+            gameOver = false;
+            timer = 0;
+            flags = 0;
+            firstClick = true;
+            
+            document.getElementById('mines-left').textContent = mines;
+            document.getElementById('timer').textContent = '0';
+            document.getElementById('message').textContent = '';
+            document.getElementById('message').className = 'message';
+            
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!gameOver) {
+                    timer++;
+                    document.getElementById('timer').textContent = timer;
+                }
+            }, 1000);
+            
+            const boardEl = document.getElementById('board');
+            boardEl.style.gridTemplateColumns = `repeat(${cols}, 35px)`;
+            boardEl.innerHTML = '';
+            
+            for (let r = 0; r < rows; r++) {
+                board[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    board[r][c] = {
+                        mine: false,
+                        revealed: false,
+                        flagged: false,
+                        neighborMines: 0
+                    };
+                    
+                    const cell = document.createElement('button');
+                    cell.className = 'cell';
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    cell.addEventListener('click', () => handleClick(r, c));
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        handleRightClick(r, c);
+                    });
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+        
+        function placeMines(excludeRow, excludeCol) {
+            const diff = difficulties[currentDifficulty];
+            let minesPlaced = 0;
+            
+            while (minesPlaced < diff.mines) {
+                const r = Math.floor(Math.random() * diff.rows);
+                const c = Math.floor(Math.random() * diff.cols);
+                
+                const isExcluded = Math.abs(r - excludeRow) <= 1 && Math.abs(c - excludeCol) <= 1;
+                
+                if (!board[r][c].mine && !isExcluded) {
+                    board[r][c].mine = true;
+                    minesPlaced++;
+                }
+            }
+            
+            for (let r = 0; r < diff.rows; r++) {
+                for (let c = 0; c < diff.cols; c++) {
+                    if (!board[r][c].mine) {
+                        board[r][c].neighborMines = countNeighborMines(r, c);
+                    }
+                }
+            }
+        }
+        
+        function countNeighborMines(row, col) {
+            const diff = difficulties[currentDifficulty];
+            let count = 0;
+            
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const nr = row + dr;
+                    const nc = col + dc;
+                    if (nr >= 0 && nr < diff.rows && nc >= 0 && nc < diff.cols) {
+                        if (board[nr][nc].mine) count++;
+                    }
+                }
+            }
+            return count;
+        }
+        
+        function handleClick(row, col) {
+            if (gameOver || board[row][col].flagged || board[row][col].revealed) return;
+            
+            if (firstClick) {
+                firstClick = false;
+                placeMines(row, col);
+            }
+            
+            if (board[row][col].mine) {
+                gameOver = true;
+                revealAllMines();
+                showMessage('💥 游戏结束!', 'lose');
+                clearInterval(timerInterval);
+                return;
+            }
+            
+            revealCell(row, col);
+            checkWin();
+        }
+        
+        function handleRightClick(row, col) {
+            if (gameOver || board[row][col].revealed) return;
+            
+            const cell = getCellElement(row, col);
+            const diff = difficulties[currentDifficulty];
+            
+            if (board[row][col].flagged) {
+                board[row][col].flagged = false;
+                flags--;
+                cell.classList.remove('flagged');
+                cell.textContent = '';
+            } else {
+                board[row][col].flagged = true;
+                flags++;
+                cell.classList.add('flagged');
+                cell.textContent = '🚩';
+            }
+            
+            document.getElementById('mines-left').textContent = diff.mines - flags;
+        }
+        
+        function revealCell(row, col) {
+            const diff = difficulties[currentDifficulty];
+            if (row < 0 || row >= diff.rows || col < 0 || col >= diff.cols) return;
+            if (board[row][col].revealed || board[row][col].flagged) return;
+            
+            board[row][col].revealed = true;
+            const cell = getCellElement(row, col);
+            cell.classList.add('revealed');
+            
+            if (board[row][col].neighborMines > 0) {
+                cell.textContent = board[row][col].neighborMines;
+                cell.dataset.num = board[row][col].neighborMines;
+            } else {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        revealCell(row + dr, col + dc);
+                    }
+                }
+            }
+        }
+        
+        function revealAllMines() {
+            const diff = difficulties[currentDifficulty];
+            for (let r = 0; r < diff.rows; r++) {
+                for (let c = 0; c < diff.cols; c++) {
+                    if (board[r][c].mine) {
+                        const cell = getCellElement(r, c);
+                        cell.classList.add('revealed', 'mine');
+                        cell.textContent = '💣';
+                    }
+                }
+            }
+        }
+        
+        function checkWin() {
+            const diff = difficulties[currentDifficulty];
+            let revealedCount = 0;
+            
+            for (let r = 0; r < diff.rows; r++) {
+                for (let c = 0; c < diff.cols; c++) {
+                    if (board[r][c].revealed) revealedCount++;
+                }
+            }
+            
+            if (revealedCount === diff.rows * diff.cols - diff.mines) {
+                gameOver = true;
+                showMessage('🎉 恭喜你赢了!', 'win');
+                clearInterval(timerInterval);
+            }
+        }
+        
+        function showMessage(text, className) {
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = text;
+            msgEl.className = 'message ' + className;
+        }
+        
+        function getCellElement(row, col) {
+            return document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+        }
+        
+        document.getElementById('difficulty').addEventListener('change', (e) => {
+            currentDifficulty = e.target.value;
+            initGame();
+        });
+        
+        initGame();
+    </script>
+</body>
+</html>
